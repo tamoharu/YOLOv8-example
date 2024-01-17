@@ -1,6 +1,7 @@
 import onnxruntime
 
-model = onnxruntime.InferenceSession('../models/yolov8n-face-dynamic.onnx')
+# model = onnxruntime.InferenceSession('../models/yolov8n-face-dynamic.onnx') # dynamic
+model = onnxruntime.InferenceSession('../models/yolov8n-face.onnx') # static
 input = model.get_inputs()
 output = model.get_outputs()
 

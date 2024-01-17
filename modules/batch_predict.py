@@ -50,12 +50,16 @@ def preprocess_images(images: List[Image], input_size=(640, 640)) -> tuple[numpy
 		top, bottom = round(dh - 0.1), round(dh + 0.1)
 		left, right = round(dw - 0.1), round(dw + 0.1)
 		image = cv2.copyMakeBorder(image, top, bottom, left, right, cv2.BORDER_CONSTANT, value=(114, 114, 114))
+		
 		# normalize
 		image = image.astype(numpy.float32) / 255.0
+		
 		# RGB -> BGR
 		image = image[..., ::-1]
+		
 		# HWC -> CHW
 		image = image.transpose((2, 0, 1))
+		
 		preprocessed.append(image)
 		meta_data['ratios'].append(ratio)
 		meta_data['dws'].append(dw)
@@ -72,13 +76,18 @@ def predict(model: Session, images: Image) -> Prediction:
 
 
 def postprocess_predictions(predictions: Prediction, meta_data: MetaData, score_threshold=0.25, iou_threshold=0.4) -> List[Face]:
+	# (n, 20, 8400) -> (n, 8400, 20)
 	predictions = numpy.transpose(predictions, (0, 2, 1))
 	predictions = numpy.ascontiguousarray(predictions)
+	
+	# create batch faces
 	batch_faces = []
 	for i, pred in enumerate(predictions):
 		bbox, score, kps = numpy.split(pred, [4, 5], axis=1)
 		ratio, dw, dh = meta_data['ratios'][i], meta_data['dws'][i], meta_data['dhs'][i]
-
+		
+		# (x_center, y_center, width, height) -> (x_min, y_min, x_max, y_max)
+		# restore to original size
 		new_ratio = 1/ratio	
 		x_center, y_center, width, height = bbox[:, 0], bbox[:, 1], bbox[:, 2], bbox[:, 3]
 		x_min = (x_center - (width / 2) - dw) * new_ratio
@@ -86,20 +95,26 @@ def postprocess_predictions(predictions: Prediction, meta_data: MetaData, score_
 		x_max = (x_center + (width / 2) - dw) * new_ratio
 		y_max = (y_center + (height / 2) - dh) * new_ratio
 		bbox = numpy.stack((x_min, y_min, x_max, y_max), axis=1)
+		
+		# (x, y, score) -> (x, y)
+		# restore to original size
 		for i in range(kps.shape[1] // 3):
 			kps[:, i * 3] = (kps[:, i * 3] - dw) * new_ratio
 			kps[:, i * 3 + 1] = (kps[:, i * 3 + 1] - dh) * new_ratio
-
+		
+		# filter
 		indices_above_threshold = numpy.where(score > score_threshold)[0]
 		bbox = bbox[indices_above_threshold]
 		score = score[indices_above_threshold]
 		kps = kps[indices_above_threshold]
-
+		
+		# nms
 		nms_indices = cv2.dnn.NMSBoxes(bbox.tolist(), score.ravel().tolist(), score_threshold, iou_threshold)
 		bbox = bbox[nms_indices]
 		score = score[nms_indices]
 		kps = kps[nms_indices]
-
+		
+		# convert to list
 		bbox_list = []
 		for box in bbox:
 			bbox_list.append(numpy.array(

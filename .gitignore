@@ -1,0 +1,9 @@
+.vscode
+**/venv/
+**/__pycache__/
+**/pyvenv.cfg
+**/local_cache/
+**/*.DS_Store
+**/*.jpg
+**/*.mp4
+**/*.png
